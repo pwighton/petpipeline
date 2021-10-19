@@ -20,17 +20,13 @@ def parse_args(args):
     
 def main(argv):
     args = parse_args(argv)
-    print(args.experiment_dir)
-    print(args.output_dir)
-    print(args.working_dir)
-    print(args.data_dir)
-    #config = Config(experiment_dir=args.experiment_dir, \
-    #                output_dir=args.output_dir, \
-    #                working_dir=args.working_dir, \
-    #                data_dir=args.data_dir)
-    #pipeline = PETPipeline(config)
-    #pipeline.PETWorkflow()
-    #pipeline.run()
+    config = Config(experiment_dir=args.experiment_dir, \
+                    output_dir=args.output_dir, \
+                    working_dir=args.working_dir, \
+                    data_dir=args.data_dir)
+    pipeline = PETPipeline(config)
+    pipeline.PETWorkflow()
+    pipeline.run()
     
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
