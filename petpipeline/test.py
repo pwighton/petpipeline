@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import sys
 import argparse
 
@@ -6,7 +8,7 @@ from config import Config
 
 def parse_args(args):
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--expriment_dir", default="/home/avneet/Desktop/PETWorkflow_",
+    parser.add_argument("-e", "--experiment_dir", default="/home/avneet/Desktop/PETWorkflow_",
                         help="The experiment directory")
     parser.add_argument("-o", "--output_dir", default="output_dir/",
                         help="The output directory (relative to the experiment directory)")
