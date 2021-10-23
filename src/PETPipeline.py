@@ -6,6 +6,9 @@ import nibabel as nib
 # Input 
 import bids
 from bids import BIDSLayout, BIDSValidator
+from nipype.interfaces.freesurfer.model import SegStatsReconAllInputSpec
+
+from mid_frames import create_mid_frame_dat
 bids.config.set_option('extension_initial_dot', True) #suppress bids warning
 
 from nipype.interfaces.io import SelectFiles
@@ -34,7 +37,7 @@ from nipype.interfaces.freesurfer import petsurfer
 from nipype.interfaces.freesurfer import MRICoreg
 
 # Helper function for computing time weighted averge
-from utils import compute_weighted_average
+from utils import compute_weighted_average, create_mid_frame_dat,  combine_file_paths, combine_
 
 from config import Config
 
@@ -60,8 +63,25 @@ class PETPipeline:
         
         # create freesurfer dir
         freesurfer_dir = os.path.join(self.config.experiment_dir, 'freesurfer')
+        #output_dir = os.path.join(freesurfer_dir, 'pet')
         os.system('mkdir -p %s'%freesurfer_dir)
 
+        # create derivatives
+        derivatives = os.path.join(self.config.experiment_dir, 'derivatives')
+        os.system('mkdir -p %s'%derivatives)
+        
+        # create pvc_dir
+        self.pvc_dir = os.path.join(derivatives,'pvc')
+        os.system('mkdir -p %s'%self.pvc_dir)
+
+        # create km_dir
+        self.km_dir = os.path.join(derivatives,'km')
+        os.system('mkdir -p %s'%self.km_dir)
+
+        # create km2_dir
+        self.km2_dir = os.path.join(derivatives,'km2')
+        os.system('mkdir -p %s'%self.km2_dir)
+        
         # Initialize nodes in workflow
 
         # 1. Motion Correction
@@ -89,7 +109,7 @@ class PETPipeline:
 
         # 3.b. Delineation of Volumes of Interest: Pet Surfer GTMSeg
         gtmseg = Node(petsurfer.GTMSeg(
-                        subjects_dir=freesurfer_dir), 
+                        subjects_dir=freesurfer_dir),
                         name="gtmseg")
   
 
@@ -98,16 +118,67 @@ class PETPipeline:
                             output_names=['subject_id'], 
                             function=self.map_subjects), name="mapsubjects")
 
+        create_subjects_dir_pvc = Node(Function(
+                                        input_names=['directory','session_id','subject_id'],
+                                        output_names=['directory'], 
+                                        function = self.create_subjects_dir
+                                       ),name= "create_subjects_dir_pvc")
+        create_subjects_dir_pvc.inputs.directory = self.pvc_dir
+
         # 4. Partial Volume Correction 
         partial_volume_correction = Node(petsurfer.GTMPVC(
-                                            subjects_dir=freesurfer_dir), name="gtmpvc")
+                                            subjects_dir=freesurfer_dir,
+                                            psf = 4,
+                                            default_seg_merge = True,
+                                            auto_mask = (1, 0.1),
+                                            km_ref = ['8 47'],
+                                            km_hb = ['11 12 50 51'],
+                                            no_rescale = True,
+                                            save_input = True),
+                                            name="partial_volume_correction")
         
-        # 5. Kinetic Modelling using MRTM
-        kinetic_modelling = Node(petsurfer.MRTM(),name="kinetic_modelling")
+        # 5. a. Kinetic Modelling using MRTM
+        midframes = Node(Function(
+                            input_names=['json_file'], 
+                            output_names=['time_file'], 
+                            function=create_mid_frame_dat), name="midframes")
+
+        
+        combine_outputs = Node(Function (input_names=["time_file","ref_file"],
+                                        output_names = ["input_to_mrtm"],
+                                        function = combine_file_paths),
+                                        name="combine_outputs")
+
+        
+        create_subjects_dir_km = Node(Function(
+                                        input_names=['directory','session_id','subject_id'],
+                                        output_names=['directory'], 
+                                        function = self.create_subjects_dir
+                                       ),name= "create_subjects_dir_km")
+        create_subjects_dir_km.inputs.directory = self.km_dir
+        kinetic_modelling = Node(petsurfer.MRTM(subjects_dir=freesurfer_dir),name="kinetic_modelling")
+
+
+        # 5. b. Kinetic Modelling using MRTM2
+        
+        combine_outputs_ = Node(Function(input_names=["time_file","ref_file", "k2p_file"],
+                                        output_names = ["input_to_mrtm2"],
+                                        function = combine_),
+                                        name="combine_")
+
+        create_subjects_dir_km2 = Node(Function(
+                                        input_names=['directory','session_id','subject_id'],
+                                        output_names=['directory'], 
+                                        function = self.create_subjects_dir
+                                       ),name= "create_subjects_dir_km2")
+        create_subjects_dir_km2.inputs.directory = self.km2_dir
+        kinetic_modelling_ = Node(petsurfer.MRTM2(subjects_dir=freesurfer_dir),name="kinetic_modelling_")
+
 
 
         # Streamline Input Output 
         print(data_path)
+
         layout = BIDSLayout(data_path)
         infosource = Node(IdentityInterface(
                             fields=['subject_id','session_id']),
@@ -121,9 +192,21 @@ class PETPipeline:
            
         selectfiles = Node(SelectFiles(templates, base_directory=os.path.join(self.config.experiment_dir,self.config.data_dir)), name="select_files")
 
+
+        #petsurfer_templates = {'': 'sub-{subject_id}/ses-{session_id}/*_.dat}
         
-        datasink = Node(DataSink(base_directory=self.config.experiment_dir, container= self.config.output_dir), name="datasink")
+        datasink = Node(DataSink(base_directory=derivatives, container="petsurfer"), name="datasink")
+        #datasink = Node(DataSink(base_directory=self.config.experiment_dir, container= output_dir), name="datasink")
+       
+        substitutions = [('_subject_id_', 'sub-')]
+        subjFolders = [('_session_id_%ssub-%s' % (ses, sub), 'sub-%s/ses-%s' %(sub,ses))
+                        for ses in layout.get_sessions()
+                        for sub in layout.get_subjects()]
+        substitutions.extend(subjFolders)
+        datasink.inputs.substitutions = substitutions
+
         
+
         self.preprocessing_workflow.connect([
                                                 (infosource, selectfiles, [('subject_id', 'subject_id'),('session_id', 'session_id')]), 
                                                 (infosource, mapsubjects, [('subject_id', 'subject_id'),('session_id', 'session_id')]),
@@ -133,14 +216,61 @@ class PETPipeline:
                                                 (selectfiles, reconall, [('anat','T1_files')]),
                                                 (mapsubjects, reconall, [('subject_id','subject_id')]),
                                                 (reconall, gtmseg, [('subject_id','subject_id')]),
-                                                (reconall, coregistration, [('subject_id','subject_id')]), 
+                                                (reconall, coregistration, [('subject_id','subject_id')]),
                                                 (time_weighted_average, coregistration, [('out_file','source_file')]),
                                                 (selectfiles, coregistration, [('anat','reference_file')]),
                                                 (motion_correction, partial_volume_correction, [('out_file','in_file')]),
-                                                (gtmseg, partial_volume_correction, [('out_file','segmentation')]),
-                                                (coregistration, partial_volume_correction, [('out_lta_file','reg_file')])
-                                            ])
+                                                (infosource, create_subjects_dir_pvc, [('subject_id', 'subject_id'),('session_id', 'session_id')]),
+                                                (gtmseg, partial_volume_correction, [('gtm_file','segmentation')]),
+                                                (coregistration, partial_volume_correction, [('out_lta_file','reg_file')]),
+                                                (create_subjects_dir_pvc,partial_volume_correction, [('directory','pvc_dir')]),
+                                                (partial_volume_correction, combine_outputs, [('ref_file','ref_file')]),
+                                                (selectfiles,midframes, [('json','json_file')]),
+                                                (midframes, combine_outputs, [('time_file','time_file')]),
+                                                (combine_outputs, kinetic_modelling ,[('input_to_mrtm', 'mrtm1')]),
+                                                (infosource, create_subjects_dir_km, [('subject_id', 'subject_id'),('session_id', 'session_id')]),
+                                                (create_subjects_dir_km, kinetic_modelling ,[('directory', 'glm_dir')]),
+                                                (partial_volume_correction, kinetic_modelling ,[('hb_nifti','in_file')]),
+                                                (kinetic_modelling, datasink, [('k2p','trythis2')]),
+                                                (kinetic_modelling, combine_outputs_, [('k2p','k2p_file')]),
+                                                (partial_volume_correction, datasink, [('hb_nifti','trythis')]),
+                                                (midframes, combine_outputs_, [('time_file','time_file')]),
+                                                (partial_volume_correction, combine_outputs_, [('ref_file','ref_file')]),
+                                                (combine_outputs_, kinetic_modelling_, [('input_to_mrtm2','mrtm2')]),
+                                                (infosource, create_subjects_dir_km2, [('subject_id', 'subject_id'),('session_id', 'session_id')]),
+                                                (create_subjects_dir_km2, kinetic_modelling_ ,[('directory', 'glm_dir')]),
+                                                (partial_volume_correction, kinetic_modelling_ ,[('hb_nifti','in_file')]),
+                                                ])
+    
+    def create_subjects_dir(directory, session_id, subject_id):
+        """
+            Map session ids and subject ids to 
+            correcsponding directories for 
+            'pvc_dir' inputs to partial volume correction 
 
+            Parameters
+            ----------
+            session_id : str 
+                session identifier
+            subject_id : str 
+                unique subject identifier 
+
+            Returns
+            -------
+            path to dir session_id_subject_id: str
+                creates directory  for each session and subject combined
+                for storing pvc output
+        """
+        from pathlib import Path
+        import os
+
+        dir_name = "sub-" +  subject_id + "/" + "ses-" + session_id
+        dir_path = os.path.join(directory,dir_name)
+        Path(dir_path).mkdir(parents=True, exist_ok=True)
+        return os.path.abspath(dir_path)
+            
+
+    
     def map_subjects(session_id, subject_id):
         """
             Map session ids and subject ids for for recon all 

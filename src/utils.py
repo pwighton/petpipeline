@@ -1,3 +1,34 @@
+def create_mid_frame_dat(json_file):
+    
+    import os
+    from os.path import join, isfile
+    import numpy as np
+    import json
+    from nipype.utils.filemanip import split_filename
+
+    """
+        Extract timing of mid frames of dynamic PET data and save as text file for
+        usage by mri_glmfit
+        
+    Arguments
+    ---------
+    json_file: string
+        path to BIDS json PET file
+    fout: string
+        path to output file
+    """  
+
+    pth, fname, ext = split_filename(json_file)
+    print(fname)
+    fout = "{}_time.dat".format(fname)
+    with open(json_file, 'r') as f:
+        info = json.load(f)
+    frames_start = np.array(info['FrameTimesStart'], dtype=float)
+    frames_duration = np.array(info['FrameDuration'], dtype=float)
+    mid_frames = frames_start + frames_duration/2    
+    np.savetxt(fout, mid_frames, fmt='%0.1f')
+    
+    return os.path.abspath(fout)
 
 
 def compute_average(in_file, out_file=None):
@@ -78,4 +109,79 @@ def compute_weighted_average(in_file, json_file, out_file=None):
     pth, fname, ext = split_filename(in_file)
     out_file = "{}_twa.nii.gz".format(fname)
     img_.to_filename(out_file)
-    return os.path.abspath(out_file)
+    return os.path.abspath(out_file)    
+
+
+def combine_file_paths(time_file, ref_file):
+
+    """
+        A function to return a tuple as a list
+        using the input files provided
+
+        Parameters
+        ----------
+        time_file : str 
+            input file path (str) for pet volume
+        ref_file : str 
+            output file path (str) computed average
+
+        Returns
+        -------
+        [(time_file, ref_file)] :
+            [(time_file path (str), ref_file path)] 
+
+    """
+
+    import os
+    return [(os.path.abspath(ref_file),os.path.abspath(time_file))]
+
+def extract_value_from_file(in_file):
+    with open(in_file) as f:
+        val = float(f.readlines()[0].strip())
+    return val
+
+def combine_(ref_file, time_file, k2p_file):
+
+    """
+        A function to return a tuple as a list
+        using the input files provided
+
+        Parameters
+        ----------
+        time_file : str 
+            input file path (str) for pet volume
+        ref_file : str 
+            output file path (str) computed average
+
+        Returns
+        -------
+        [(time_file, ref_file, k2p)] :
+            [(time_file path (str), ref_file path, k2p)] 
+
+    """
+
+    import os
+    from utils import extract_value_from_file
+    k2p = extract_value_from_file(k2p_file)
+
+    return [(os.path.abspath(ref_file),os.path.abspath(time_file), k2p)]
+
+def listify(*args):
+
+    """
+        A function that creates a tuple 
+        of all the arguments passed, for 
+        inputs to InputMultiPath Spec
+
+        Parameters
+        ----------
+        *args: a list of arguments
+
+        Returns
+        -------
+        [(*args)] :
+                a single-element list of a tuple containing 
+                the arguments passed
+
+    """
+    return [tuple(args)]
