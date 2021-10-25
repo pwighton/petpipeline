@@ -1,7 +1,7 @@
 from distutils.core import setup
 setup(
-  name = 'YOURPACKAGENAME',         # How you named your package folder (MyLib)
-  packages = ['YOURPACKAGENAME'],   # Chose the same as "name"
+  name = 'petpipeline',         # How you named your package folder (MyLib)
+  packages = ['petpipeline'],   # Chose the same as "name"
   version = '0.1',      # Start with a small number and increase it with every change you make
   license='MIT',        # Chose a license from here: https://help.github.com/articles/licensing-a-repository
   description = 'TYPE YOUR DESCRIPTION HERE',   # Give a short description about your library
@@ -13,6 +13,12 @@ setup(
   install_requires=[            # I get to this in a second
           'validators',
           'beautifulsoup4',
+          'bids',
+          'dataclasses',
+          'config',
+          'nibabel',
+          'numpy',
+          'argparse',
       ],
   classifiers=[
     'Development Status :: 3 - Alpha',      # Chose either "3 - Alpha", "4 - Beta" or "5 - Production/Stable" as the current state of your package
