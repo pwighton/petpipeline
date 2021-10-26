@@ -8,7 +8,6 @@ import bids
 from bids import BIDSLayout, BIDSValidator
 from nipype.interfaces.freesurfer.model import SegStatsReconAllInputSpec
 
-from mid_frames import create_mid_frame_dat
 bids.config.set_option('extension_initial_dot', True) #suppress bids warning
 
 from nipype.interfaces.io import SelectFiles
