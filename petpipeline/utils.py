@@ -1,3 +1,5 @@
+import os
+
 def create_mid_frame_dat(json_file):
     
     import os
@@ -185,3 +187,16 @@ def listify(*args):
 
     """
     return [tuple(args)]
+
+def assert_dir(dir_path):
+    """
+        A function that creates a 
+        directory if it does not exist
+
+        Parameters
+        ----------
+        dir_path: path to directory
+    """
+    full_path = os.path.abspath(dir_path)
+    if not os.path.isdir(full_path):
+        os.mkdirs(full_path)

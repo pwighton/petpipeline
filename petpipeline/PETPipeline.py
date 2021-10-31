@@ -35,80 +35,85 @@ from nipype.interfaces.freesurfer import petsurfer
 # MRICoreg for Coregistration
 from nipype.interfaces.freesurfer import MRICoreg
 
-# Helper function for computing time weighted averge
-from utils import compute_weighted_average, create_mid_frame_dat,  combine_file_paths, combine_
+# Helper functions
+from utils import *
 
-from config import Config
+from config import _EnvConfig, \
+                   _ReconAllConfig, \
+                   _MotionCorrectionConfig, \
+                   _PartialVolumeCorrectionConfig, \
+                   _CoregistrationConfig
+
 
 class PETPipeline:
 
-    def __init__(self, config:Config):
-        self.preprocessing_workflow = None
-        self.config = config
+    def __init__(self, **kwargs):
+
+        self.__dict__.update(kwargs)
+
+        # inititalize workflow
+        self.preprocessing_workflow = Workflow(name='preprocessing')        
+        self.preprocessing_workflow.base_dir = os.path.join(self.env_config.experiment_dir, 
+                                                            self.env_config.working_dir)
+        # data path
+        self.data_path = os.path.join(self.env_config.experiment_dir,self.env_config.data_dir)
+
+        # create freesurfer dir
+        self.freesurfer_dir = os.path.join(self.env_config.experiment_dir, 'freesurfer')
+        assert_dir(self.freesurfer_dir)
+
+        # create derivatives
+        self.derivatives = os.path.join(self.env_config.experiment_dir, 'derivatives')
+        assert_dir(self.derivatives)
+        
+        # create pvc_dir
+        self.pvc_dir = os.path.join(self.derivatives,'pvc')
+        assert_dir(self.pvc_dir)
+
+        # create km_dir
+        self.km_dir = os.path.join(self.derivatives,'km')
+        assert_dir(self.km_dir)
+
+        # create km2_dir
+        self.km2_dir = os.path.join(self.derivatives,'km2')
+        assert_dir(self.km2_dir)
+        
 
     def PETWorkflow(self):
 
         """
-        Create a workflow for PET preprocessing. 
+            Create a workflow for PET preprocessing.
         """
 
-        # inititalize workflow
-        self.preprocessing_workflow = Workflow(name='preprocessing')
-
-        self.preprocessing_workflow.base_dir = os.path.join(self.config.experiment_dir, self.config.working_dir)
-
-        # data path
-        data_path = os.path.join(self.config.experiment_dir,self.config.data_dir)
-        
-        # create freesurfer dir
-        freesurfer_dir = os.path.join(self.config.experiment_dir, 'freesurfer')
-        #output_dir = os.path.join(freesurfer_dir, 'pet')
-        os.system('mkdir -p %s'%freesurfer_dir)
-
-        # create derivatives
-        derivatives = os.path.join(self.config.experiment_dir, 'derivatives')
-        os.system('mkdir -p %s'%derivatives)
-        
-        # create pvc_dir
-        self.pvc_dir = os.path.join(derivatives,'pvc')
-        os.system('mkdir -p %s'%self.pvc_dir)
-
-        # create km_dir
-        self.km_dir = os.path.join(derivatives,'km')
-        os.system('mkdir -p %s'%self.km_dir)
-
-        # create km2_dir
-        self.km2_dir = os.path.join(derivatives,'km2')
-        os.system('mkdir -p %s'%self.km2_dir)
-        
-        # Initialize nodes in workflow
-
         # 1. Motion Correction
-        motion_correction = Node(fsl.MCFLIRT(), name="motion_correction")
+        motion_correction = Node(fsl.MCFLIRT(
+                                             **self.motion_correction_config.__dict__), 
+                                              name="motion_correction")
 
 
         # time weighted average
         time_weighted_average = Node(Function(
                                         input_names=["in_file", "json_file"], 
                                         output_names=["out_file"], 
-                                        function=compute_weighted_average),
+                                        function=compute_weighted_average), 
                                         name="time_weighted_average")
                                     
         
         # 2. Co-Registration
         coregistration = Node(MRICoreg(
-                                subjects_dir=freesurfer_dir),
-                                name="mricoreg")
+                                **self.coregistration_config.__dict__,
+                                subjects_dir=self.freesurfer_dir),
+                                name="coregistration")
 
         # 3.a. Delineation of Volumes of Interest: Run Reconall for all subjects
         reconall = Node(ReconAll(
                             directive='all', 
-                            subjects_dir=freesurfer_dir),
+                            subjects_dir=self.freesurfer_dir),
                             name="reconall")
 
         # 3.b. Delineation of Volumes of Interest: Pet Surfer GTMSeg
         gtmseg = Node(petsurfer.GTMSeg(
-                        subjects_dir=freesurfer_dir),
+                        subjects_dir=self.freesurfer_dir),
                         name="gtmseg")
   
 
@@ -126,14 +131,8 @@ class PETPipeline:
 
         # 4. Partial Volume Correction 
         partial_volume_correction = Node(petsurfer.GTMPVC(
-                                            subjects_dir=freesurfer_dir,
-                                            psf = 4,
-                                            default_seg_merge = True,
-                                            auto_mask = (1, 0.1),
-                                            km_ref = ['8 47'],
-                                            km_hb = ['11 12 50 51'],
-                                            no_rescale = True,
-                                            save_input = True),
+                                            **self.pvc_config.__dict__,
+                                            subjects_dir=self.freesurfer_dir),
                                             name="partial_volume_correction")
         
         # 5. a. Kinetic Modelling using MRTM
@@ -155,7 +154,7 @@ class PETPipeline:
                                         function = self.create_subjects_dir
                                        ),name= "create_subjects_dir_km")
         create_subjects_dir_km.inputs.directory = self.km_dir
-        kinetic_modelling = Node(petsurfer.MRTM(subjects_dir=freesurfer_dir),name="kinetic_modelling")
+        kinetic_modelling = Node(petsurfer.MRTM(subjects_dir=self.freesurfer_dir),name="kinetic_modelling")
 
 
         # 5. b. Kinetic Modelling using MRTM2
@@ -171,14 +170,12 @@ class PETPipeline:
                                         function = self.create_subjects_dir
                                        ),name= "create_subjects_dir_km2")
         create_subjects_dir_km2.inputs.directory = self.km2_dir
-        kinetic_modelling_ = Node(petsurfer.MRTM2(subjects_dir=freesurfer_dir),name="kinetic_modelling_")
+        kinetic_modelling_ = Node(petsurfer.MRTM2(subjects_dir=self.freesurfer_dir),name="kinetic_modelling_")
 
 
 
-        # Streamline Input Output 
-        print(data_path)
-
-        layout = BIDSLayout(data_path)
+        # Streamline Input Output
+        layout = BIDSLayout(self.data_path)
         infosource = Node(IdentityInterface(
                             fields=['subject_id','session_id']),
                             name="infosource")
@@ -189,13 +186,13 @@ class PETPipeline:
                     'pet': 'sub-{subject_id}/ses-{session_id}/pet/*_pet.nii.gz', 
                     'json': 'sub-{subject_id}/ses-{session_id}/pet/*_pet.json'}
            
-        selectfiles = Node(SelectFiles(templates, base_directory=os.path.join(self.config.experiment_dir,self.config.data_dir)), name="select_files")
+        selectfiles = Node(SelectFiles(templates, base_directory=os.path.join(self.env_config.experiment_dir,self.env_config.data_dir)), name="select_files")
 
 
         #petsurfer_templates = {'': 'sub-{subject_id}/ses-{session_id}/*_.dat}
         
-        datasink = Node(DataSink(base_directory=derivatives, container="petsurfer"), name="datasink")
-        #datasink = Node(DataSink(base_directory=self.config.experiment_dir, container= output_dir), name="datasink")
+        datasink = Node(DataSink(base_directory=self.derivatives, container="petsurfer"), name="datasink")
+
        
         substitutions = [('_subject_id_', 'sub-')]
         subjFolders = [('_session_id_%ssub-%s' % (ses, sub), 'sub-%s/ses-%s' %(sub,ses))
