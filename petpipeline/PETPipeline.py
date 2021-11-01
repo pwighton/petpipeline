@@ -183,7 +183,7 @@ class PETPipeline:
 
 
         templates = {'anat': 'sub-{subject_id}/ses-{session_id}/anat/*_T1w.nii', 
-                    'pet': 'sub-{subject_id}/ses-{session_id}/pet/*_pet.nii.gz', 
+                    'pet': r'sub-{subject_id}/ses-{session_id}/pet/*_pet.[n]*', 
                     'json': 'sub-{subject_id}/ses-{session_id}/pet/*_pet.json'}
            
         selectfiles = Node(SelectFiles(templates, base_directory=os.path.join(self.env_config.experiment_dir,self.env_config.data_dir)), name="select_files")
@@ -227,9 +227,7 @@ class PETPipeline:
                                                 (infosource, create_subjects_dir_km, [('subject_id', 'subject_id'),('session_id', 'session_id')]),
                                                 (create_subjects_dir_km, kinetic_modelling ,[('directory', 'glm_dir')]),
                                                 (partial_volume_correction, kinetic_modelling ,[('hb_nifti','in_file')]),
-                                                (kinetic_modelling, datasink, [('k2p','trythis2')]),
                                                 (kinetic_modelling, combine_outputs_, [('k2p','k2p_file')]),
-                                                (partial_volume_correction, datasink, [('hb_nifti','trythis')]),
                                                 (midframes, combine_outputs_, [('time_file','time_file')]),
                                                 (partial_volume_correction, combine_outputs_, [('ref_file','ref_file')]),
                                                 (combine_outputs_, kinetic_modelling_, [('input_to_mrtm2','mrtm2')]),
