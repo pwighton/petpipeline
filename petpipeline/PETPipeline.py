@@ -68,7 +68,7 @@ class PETPipeline:
         assert_dir(self.derivatives)
 
         # create freesurfer dir
-        self.freesurfer_dir = os.path.join(self.derivatives, 'freesurfer')
+        self.freesurfer_dir = os.path.join(self.env_config.experiment_dir, 'freesurfer')
         assert_dir(self.freesurfer_dir)
         
         # create pvc_dir
