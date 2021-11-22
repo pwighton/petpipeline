@@ -15,7 +15,7 @@ from nipype.interfaces.io import SelectFiles
 # Nipype 
 import nibabel as nib
 from nipype import Node, Function
-from nipype.pipeline import Node, MapNode, Workflow
+from nipype.pipeline import Workflow
 
 # FSL for Motion Correction
 from nipype.interfaces import fsl
@@ -36,7 +36,12 @@ from nipype.interfaces.freesurfer import petsurfer
 from nipype.interfaces.freesurfer import MRICoreg
 
 # Helper functions
-from utils import *
+from utils import assert_dir, \
+                  create_mid_frame_dat, \
+                  compute_weighted_average, \
+                  combine_file_paths, \
+                  combine_
+                  
 
 from config import _EnvConfig, \
                    _ReconAllConfig, \
@@ -56,15 +61,15 @@ class PETPipeline:
         self.preprocessing_workflow.base_dir = os.path.join(self.env_config.experiment_dir, 
                                                             self.env_config.working_dir)
         # data path
-        self.data_path = os.path.join(self.env_config.experiment_dir,self.env_config.data_dir)
-
-        # create freesurfer dir
-        self.freesurfer_dir = os.path.join(self.env_config.experiment_dir, 'freesurfer')
-        assert_dir(self.freesurfer_dir)
+        self.data_path = self.env_config.data_dir
 
         # create derivatives
         self.derivatives = os.path.join(self.env_config.experiment_dir, 'derivatives')
         assert_dir(self.derivatives)
+
+        # create freesurfer dir
+        self.freesurfer_dir = os.path.join(self.derivatives, 'freesurfer')
+        assert_dir(self.freesurfer_dir)
         
         # create pvc_dir
         self.pvc_dir = os.path.join(self.derivatives,'pvc')
@@ -182,16 +187,16 @@ class PETPipeline:
         infosource.iterables = [('subject_id', layout.get_subjects()), ('session_id', layout.get_sessions())]
 
 
-        templates = {'anat': 'sub-{subject_id}/ses-{session_id}/anat/*_T1w.nii', 
+        templates = {'anat': 'sub-{subject_id}/ses-{session_id}/anat/*_T1w.[n]*', 
                     'pet': r'sub-{subject_id}/ses-{session_id}/pet/*_pet.[n]*', 
                     'json': 'sub-{subject_id}/ses-{session_id}/pet/*_pet.json'}
            
-        selectfiles = Node(SelectFiles(templates, base_directory=os.path.join(self.env_config.experiment_dir,self.env_config.data_dir)), name="select_files")
+        selectfiles = Node(SelectFiles(templates, 
+                                       base_directory=os.path.join(self.env_config.experiment_dir,self.env_config.data_dir)), 
+                          name="select_files")
 
-
-        #petsurfer_templates = {'': 'sub-{subject_id}/ses-{session_id}/*_.dat}
         
-        datasink = Node(DataSink(base_directory=self.derivatives, container="petsurfer"), name="datasink")
+        datasink = Node(DataSink(base_directory=self.derivatives), name="datasink")
 
        
         substitutions = [('_subject_id_', 'sub-')]
@@ -208,16 +213,18 @@ class PETPipeline:
                                                 (infosource, mapsubjects, [('subject_id', 'subject_id'),('session_id', 'session_id')]),
                                                 (selectfiles, motion_correction, [('pet', 'in_file')]), 
                                                 (motion_correction, time_weighted_average, [('out_file','in_file')]),
+                                                (motion_correction, datasink, [('out_file', 'motion_correction')]),
                                                 (selectfiles, time_weighted_average, [('json', 'json_file')]),
                                                 (selectfiles, reconall, [('anat','T1_files')]),
                                                 (mapsubjects, reconall, [('subject_id','subject_id')]),
                                                 (reconall, gtmseg, [('subject_id','subject_id')]),
                                                 (reconall, coregistration, [('subject_id','subject_id')]),
                                                 (time_weighted_average, coregistration, [('out_file','source_file')]),
-                                                (selectfiles, coregistration, [('anat','reference_file')]),
+                                                (reconall, coregistration, [('T1','reference_file')]),
                                                 (motion_correction, partial_volume_correction, [('out_file','in_file')]),
                                                 (infosource, create_subjects_dir_pvc, [('subject_id', 'subject_id'),('session_id', 'session_id')]),
                                                 (gtmseg, partial_volume_correction, [('gtm_file','segmentation')]),
+                                                (coregistration, datasink, [('out_lta_file', 'coregistration')]),
                                                 (coregistration, partial_volume_correction, [('out_lta_file','reg_file')]),
                                                 (create_subjects_dir_pvc,partial_volume_correction, [('directory','pvc_dir')]),
                                                 (partial_volume_correction, combine_outputs, [('ref_file','ref_file')]),

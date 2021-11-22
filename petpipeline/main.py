@@ -11,8 +11,6 @@ from config import _EnvConfig, \
                    _ReconAllConfig, \
                    _CoregistrationConfig \
 
-from nipype.interfaces.fsl import MCFLIRT
-
 def parse_args(args):
     parser = argparse.ArgumentParser()
     path = os.path.join(os.getcwd(),"petpipeline/config.yaml")

@@ -1,8 +1,8 @@
 environment:
-  experiment_dir: '/home/avneet/Desktop/PetCimbi'
+  experiment_dir: '/indirect/users/avneetkaur/Desktop/ColumbiaTest/'
   output_dir: 'derivatives/'
   working_dir: 'working_dir/'
-  data_dir: "data/"
+  data_dir: "/indirect/users/avneetkaur/Desktop/Columbia/rawdata/"
 
 motion_correction:
   cost: 'mutualinfo'
@@ -23,3 +23,4 @@ partial_volume_correction:
   km_hb: ['11 12 50 51']
   no_rescale: True
   save_input: True
+
